@@ -26,7 +26,8 @@ from backend.services.gps_service import GPSService
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-VIDEOS_DIR = REPO_ROOT / "data" / "videos"
+data_dir_env = os.getenv("DATA_DIR")
+VIDEOS_DIR = (Path(data_dir_env) / "videos") if data_dir_env else (REPO_ROOT / "data" / "videos")
 VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -62,6 +63,13 @@ class VideoService:
         if file_size == 0:
             save_path.unlink(missing_ok=True)
             raise ValueError("Uploaded video file is empty (0 bytes).")
+
+        max_upload_mb = int(os.getenv("MAX_UPLOAD_SIZE_MB", "150"))
+        if file_size > max_upload_mb * 1024 * 1024:
+            save_path.unlink(missing_ok=True)
+            raise ValueError(
+                f"Uploaded video size ({round(file_size / (1024 * 1024), 1)} MB) exceeds allowed limit of {max_upload_mb} MB."
+            )
 
         # Probe video metadata via OpenCV
         cap = cv2.VideoCapture(str(save_path))
@@ -139,8 +147,16 @@ class VideoService:
                 detector = damage_detector
             elif norm_type in ("combined", "dual", "all", "both"):
                 detector = CombinedDetector()
+                if not detector.is_model_ready:
+                    raise RuntimeError(
+                        "CombinedDetector cannot process video: neither RDD2022 nor COCO model weights are available on disk."
+                    )
             elif norm_type in ("general", "general_object", "coco"):
                 detector = GeneralObjectDetector()
+                if not detector.is_model_ready:
+                    raise RuntimeError(
+                        f"GeneralObjectDetector cannot process video: model is NOT_READY. {detector.loading_error}"
+                    )
             else:
                 raise ValueError(
                     f"Unsupported detector_type '{detector_type}'. Choose 'general', 'road_damage', or 'combined'."

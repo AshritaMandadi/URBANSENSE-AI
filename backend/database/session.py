@@ -11,9 +11,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from backend.database.models import Base
 
-# Database path in repository data directory
+# Database path in repository data directory or persistent storage (Render disk)
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-DB_DIR = REPO_ROOT / "data"
+data_dir_env = os.getenv("DATA_DIR")
+DB_DIR = Path(data_dir_env) if data_dir_env else (REPO_ROOT / "data")
 DB_DIR.mkdir(parents=True, exist_ok=True)
 SQLITE_DB_PATH = DB_DIR / "urbansense.db"
 

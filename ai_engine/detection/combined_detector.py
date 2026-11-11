@@ -39,6 +39,21 @@ class CombinedDetector(BaseDetector):
     def model_name(self) -> str:
         return self._model_name
 
+    @property
+    def is_model_ready(self) -> bool:
+        """Returns True if at least one underlying model is ready."""
+        return self.rdd.is_model_ready or self.coco.is_model_ready
+
+    @property
+    def status(self) -> str:
+        if self.rdd.is_model_ready and self.coco.is_model_ready:
+            return "READY (DUAL)"
+        elif self.rdd.is_model_ready:
+            return "READY (RDD_ONLY)"
+        elif self.coco.is_model_ready:
+            return "READY (COCO_ONLY)"
+        return "NOT_READY"
+
     def predict(
         self,
         frame: np.ndarray,
@@ -64,29 +79,30 @@ class CombinedDetector(BaseDetector):
                 pass
 
         # 2. General Scene Object Detection (Traffic & Pedestrians)
-        try:
-            coco_preds = self.coco.predict(
-                frame,
-                conf_threshold=conf_threshold,
-                frame_number=frame_number,
-                timestamp=timestamp,
-            )
+        if self.coco.is_model_ready:
+            try:
+                coco_preds = self.coco.predict(
+                    frame,
+                    conf_threshold=conf_threshold,
+                    frame_number=frame_number,
+                    timestamp=timestamp,
+                )
 
-            traffic_classes = {
-                "car",
-                "truck",
-                "bus",
-                "motorcycle",
-                "bicycle",
-                "person",
-                "traffic light",
-                "stop sign",
-            }
-            for det in coco_preds:
-                if det.class_name in traffic_classes:
-                    detections.append(det)
-        except Exception:
-            pass
+                traffic_classes = {
+                    "car",
+                    "truck",
+                    "bus",
+                    "motorcycle",
+                    "bicycle",
+                    "person",
+                    "traffic light",
+                    "stop sign",
+                }
+                for det in coco_preds:
+                    if det.class_name in traffic_classes:
+                        detections.append(det)
+            except Exception:
+                pass
 
         return detections
 

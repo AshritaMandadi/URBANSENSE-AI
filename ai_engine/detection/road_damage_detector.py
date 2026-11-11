@@ -14,6 +14,11 @@ import numpy as np
 import torch
 
 from ai_engine.detection.detector import BaseDetector, Detection
+from ai_engine.detection.model_provisioner import (
+    get_models_dir,
+    inspect_model_readiness,
+    resolve_road_damage_model_path,
+)
 
 
 # Standardized distress taxonomy based on RDD2022 India
@@ -23,41 +28,6 @@ ROAD_DAMAGE_CLASSES: Dict[int, str] = {
     2: "alligator_crack",     # D20
     3: "pothole",             # D40
 }
-
-
-def resolve_road_damage_model_path(model_path: Optional[str] = None) -> str:
-    """
-    Resolve the custom road damage model weights path.
-
-    Priority:
-      1. ROAD_DAMAGE_MODEL_PATH environment variable
-      2. Explicitly passed `model_path` argument
-      3. Default location: models/road_damage/best.pt
-      4. Alternative location: ai_engine/models/road_damage_yolo11n.pt
-    """
-    repo_root = Path(__file__).resolve().parent.parent.parent
-
-    env_path = os.environ.get("ROAD_DAMAGE_MODEL_PATH")
-    if env_path:
-        p = Path(env_path)
-        return str(p.resolve()) if p.is_absolute() else str((repo_root / p).resolve())
-
-    if model_path:
-        p = Path(model_path)
-        return str(p.resolve()) if p.is_absolute() else str((repo_root / p).resolve())
-
-    candidates = [
-        repo_root / "models" / "road_damage" / "best.pt",
-        Path.cwd() / "models" / "road_damage" / "best.pt",
-        repo_root / "ai_engine" / "models" / "road_damage_yolo11n.pt",
-        Path.cwd() / "ai_engine" / "models" / "road_damage_yolo11n.pt",
-    ]
-
-    for candidate in candidates:
-        if candidate and candidate.is_file():
-            return str(candidate.resolve())
-
-    return str((repo_root / "models" / "road_damage" / "best.pt").resolve())
 
 
 class RoadDamageDetector(BaseDetector):
@@ -79,6 +49,7 @@ class RoadDamageDetector(BaseDetector):
         self,
         model_path: Optional[str] = None,
         device: Optional[str] = None,
+        lazy_load: bool = True,
     ):
         self._model_path = resolve_road_damage_model_path(model_path)
         self._model_name = Path(self._model_path).name
@@ -89,25 +60,33 @@ class RoadDamageDetector(BaseDetector):
         self._loading_error: Optional[str] = None
         self._model = None
 
-        # Check if actual trained weights exist on disk
-        if Path(self._model_path).is_file():
-            try:
-                from ultralytics import YOLO
-                self._model = YOLO(self._model_path)
-                self._model.to(self._device)
-                self._is_ready = True
-                self._status = "READY"
-                self._loading_error = None
-            except Exception as err:
-                self._is_ready = False
-                self._status = "NOT_READY"
-                self._loading_error = f"Error loading model from '{self._model_path}': {err}"
-        else:
-            self._loading_error = (
-                f"Trained road damage weights file '{self._model_path}' not found. "
-                "Specialized road damage detector is in NOT_READY state. "
-                "Copy Colab trained weights to 'models/road_damage/best.pt'."
-            )
+        # Lightweight inspection: verify model readiness without eager tensor allocation
+        is_ready, status, size, err = inspect_model_readiness(self._model_path)
+        self._is_ready = is_ready
+        self._status = status
+        self._loading_error = err
+
+        if self._is_ready and not lazy_load:
+            self._load_model()
+
+    def _load_model(self) -> None:
+        """Internal helper to load YOLO model weights into memory."""
+        if self._model is not None:
+            return
+        if not self._is_ready:
+            raise RuntimeError(f"Cannot load road damage model: {self._loading_error}")
+        try:
+            from ultralytics import YOLO
+            self._model = YOLO(self._model_path)
+            self._model.to(self._device)
+            self._status = "READY"
+            self._is_ready = True
+            self._loading_error = None
+        except Exception as err:
+            self._is_ready = False
+            self._status = "NOT_READY"
+            self._loading_error = f"Error loading model from '{self._model_path}': {err}"
+            raise
 
     @property
     def is_model_ready(self) -> bool:
@@ -174,6 +153,9 @@ class RoadDamageDetector(BaseDetector):
             raise RuntimeError(
                 f"RoadDamageDetector cannot predict: model is NOT_READY. {self._loading_error}"
             )
+
+        if self._model is None:
+            self._load_model()
 
         if frame is None or not isinstance(frame, np.ndarray) or frame.size == 0:
             raise ValueError("Input frame must be a valid non-empty numpy array.")

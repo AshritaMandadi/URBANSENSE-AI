@@ -31,6 +31,15 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing UrbanSense AI database and fleet telemetry...")
     init_db()
     seed_database()
+
+    # Automatically provision model weights if remote secure URLs are configured
+    try:
+        from ai_engine.detection.model_provisioner import provision_models_if_configured
+        provision_results = provision_models_if_configured()
+        logger.info(f"Model provisioning status: {provision_results}")
+    except Exception as e:
+        logger.warning(f"Model provisioning check deferred: {e}")
+
     logger.info("UrbanSense AI backend ready.")
     yield
     logger.info("UrbanSense AI backend shutting down.")

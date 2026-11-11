@@ -1,23 +1,36 @@
+# UrbanSense AI - Render Cloud Deployment Blueprint
+# Mobile Urban Intelligence Platform (SIH26124)
+# Configured for Docker-based deployment with Persistent Disk Storage
+
 services:
   - type: web
     name: urbansense-backend
-    env: python
-    buildCommand: pip install -r requirements-prod.txt
-    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
-    plan: standard # 2 GB RAM recommended for PyTorch YOLO inference
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: standard # 2 GB RAM recommended for dual YOLO11n PyTorch CPU inference (minimum Starter 1 GB)
+    region: oregon # or frankfurt, singapore
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.9
+      - key: DATA_DIR
+        value: /app/data
       - key: YOLO_CONFIG_DIR
         value: /tmp
       - key: ROAD_DAMAGE_MODEL_PATH
-        value: models/road_damage/best.pt
+        value: /app/data/models/best.pt
+      - key: GENERAL_MODEL_PATH
+        value: /app/data/models/yolo11n.pt
+      # Optional: Set secure download URLs for automatic model weight provisioning on first boot
+      # - key: ROAD_DAMAGE_MODEL_URL
+      #   value: https://your-secure-storage.com/models/best.pt
+      # - key: MODEL_DOWNLOAD_TOKEN
+      #   value: your-optional-read-token
       - key: CORS_ORIGINS
-        value: http://localhost:5173
+        value: http://localhost:5173,http://localhost:3000
       - key: CORS_ORIGIN_REGEX
         value: ^https://.*\.vercel\.app$
+      - key: MAX_UPLOAD_SIZE_MB
+        value: "150"
     disk:
-      name: urbansense-storage
+      name: urbansense-persistent-storage
       mountPath: /app/data
-      sizeGB: 5
-
+      sizeGB: 10

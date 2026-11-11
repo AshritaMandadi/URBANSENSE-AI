@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import sys
-from typing import Optional, Sequence
+from typing import List, Optional, Sequence
 
 # Ensure Ultralytics uses a writable configuration directory in all environments
 if "YOLO_CONFIG_DIR" not in os.environ:
@@ -118,6 +118,7 @@ class GeneralObjectDetector(BaseDetector):
         self,
         model_path: Optional[str] = None,
         device: Optional[str] = None,
+        lazy_load: bool = True,
     ):
         """
         Initialize GeneralObjectDetector.
@@ -125,8 +126,11 @@ class GeneralObjectDetector(BaseDetector):
         Args:
             model_path: Optional path to YOLO weights file. Defaults to 'yolo11n.pt'.
             device: Optional device override ('mps', 'cpu', 'cuda'). Defaults to auto-detect MPS/CPU.
+            lazy_load: Whether to defer weights loading until first inference call.
         """
-        resolved_path = resolve_model_path(model_path, default_name="yolo11n.pt")
+        from ai_engine.detection.model_provisioner import inspect_model_readiness, resolve_general_model_path
+
+        resolved_path = resolve_general_model_path(model_path, default_name="yolo11n.pt")
         self._model_path = resolved_path
         self._model_name = Path(resolved_path).name
 
@@ -136,9 +140,51 @@ class GeneralObjectDetector(BaseDetector):
         else:
             self._device = "mps" if torch.backends.mps.is_available() else "cpu"
 
-        # Load model and move to target device
-        self._model = YOLO(self._model_path)
-        self._model.to(self._device)
+        self._is_ready = False
+        self._status = "NOT_READY"
+        self._loading_error: Optional[str] = None
+        self._model = None
+
+        # Lightweight readiness inspection
+        is_ready, status, size, err = inspect_model_readiness(self._model_path)
+        self._is_ready = is_ready
+        self._status = status
+        self._loading_error = err
+
+        if self._is_ready and not lazy_load:
+            self._load_model()
+
+    def _load_model(self) -> None:
+        """Internal helper to load YOLO model weights into memory."""
+        if self._model is not None:
+            return
+        from ultralytics import YOLO
+        try:
+            self._model = YOLO(self._model_path)
+            self._model.to(self._device)
+            self._is_ready = True
+            self._status = "READY"
+            self._loading_error = None
+        except Exception as err:
+            self._is_ready = False
+            self._status = "NOT_READY"
+            self._loading_error = f"Error loading general model '{self._model_path}': {err}"
+            raise
+
+    @property
+    def is_model_ready(self) -> bool:
+        """Returns True if genuine trained weights are loaded and ready."""
+        return self._is_ready
+
+    @property
+    def status(self) -> str:
+        """Return readiness status: 'READY' or 'NOT_READY'."""
+        return self._status
+
+    @property
+    def loading_error(self) -> Optional[str]:
+        """Return loading error or missing weights explanation."""
+        return self._loading_error
 
     @property
     def device(self) -> str:
@@ -159,7 +205,7 @@ class GeneralObjectDetector(BaseDetector):
         target_classes: Optional[Sequence[int]] = None,
         frame_number: Optional[int] = None,
         timestamp: Optional[float] = None,
-    ) -> list[Detection]:
+    ) -> List[Detection]:
         """
         Run YOLO11n inference on a single frame in inference mode.
 
@@ -173,6 +219,8 @@ class GeneralObjectDetector(BaseDetector):
         Returns:
             List of Detection objects.
         """
+        if self._model is None:
+            self._load_model()
         if frame is None or not isinstance(frame, np.ndarray) or frame.size == 0:
             raise ValueError("Input frame must be a valid non-empty numpy array.")
 
