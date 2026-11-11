@@ -434,19 +434,19 @@ def trigger_video_processing(
 
 @router.api_route("/api/videos/{video_id}/stream", methods=["GET", "HEAD"], tags=["Videos"])
 def stream_original_video(video_id: str, request: Request, db: Session = Depends(get_db)):
-    """Stream original uploaded video file with HTTP 206 range requests and HEAD support."""
+    """Stream original uploaded video file with HTTP 206 range requests, HEAD support, and inline browser playback."""
     video = db.query(UploadedVideo).filter(UploadedVideo.id == video_id).first()
     if not video or not video.file_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Video '{video_id}' not found.")
     path = Path(video.file_path)
     if not path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Video file '{video.filename}' missing on disk.")
-    return FileResponse(path, media_type="video/mp4", filename=video.filename)
+    return FileResponse(path, media_type="video/mp4", content_disposition_type="inline")
 
 
 @router.api_route("/api/videos/{video_id}/annotated", methods=["GET", "HEAD"], tags=["Videos"])
 def download_annotated_video(video_id: str, request: Request, db: Session = Depends(get_db)):
-    """Stream or download the processed annotated video file with HTTP 206 range requests and HEAD support."""
+    """Stream or download the processed annotated video file with HTTP 206 range requests, HEAD support, and inline browser playback."""
     job = (
         db.query(ProcessingJob)
         .filter(ProcessingJob.video_id == video_id)
@@ -459,7 +459,7 @@ def download_annotated_video(video_id: str, request: Request, db: Session = Depe
             detail=f"No annotated video available for video '{video_id}'.",
         )
     path = Path(job.annotated_video_path)
-    return FileResponse(path, media_type="video/mp4", filename=f"annotated_{video_id}.mp4")
+    return FileResponse(path, media_type="video/mp4", content_disposition_type="inline")
 
 
 # ---------------------------------------------------------

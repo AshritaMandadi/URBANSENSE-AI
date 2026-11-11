@@ -365,7 +365,7 @@ export default function VideoTab({ videos, buses, onUpload, onProcess, processin
                     key={`original-${activeVideo.id}`}
                     controls
                     playsInline
-                    preload="metadata"
+                    preload="auto"
                     style={{ width: "100%", maxHeight: "360px", display: "block" }}
                     src={apiUrl(`/api/videos/${activeVideo.id}/stream`)}
                   >
@@ -386,7 +386,7 @@ export default function VideoTab({ videos, buses, onUpload, onProcess, processin
                         key={`annotated-${activeVideo.id}`}
                         controls
                         playsInline
-                        preload="metadata"
+                        preload="auto"
                         style={{ width: "100%", maxHeight: "360px", display: "block" }}
                         src={apiUrl(`/api/videos/${activeVideo.id}/annotated`)}
                       >

@@ -96,6 +96,9 @@ export default function CameraCenterTab({
   const [playerMode, setPlayerMode] = useState("annotated"); // "original" or "annotated"
   const [selectedVideoId, setSelectedVideoId] = useState(null);
   const [isMuted, setIsMuted] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [playbackError, setPlaybackError] = useState(null);
 
   const videoRef = useRef(null);
 
@@ -129,12 +132,48 @@ export default function CameraCenterTab({
   }, [activeVideo?.id, activeVideo?.has_annotated]);
 
   // Handle video element play / pause toggles
+  const handleTogglePlay = () => {
+    if (videoRef.current) {
+      if (videoRef.current.paused) {
+        const p = videoRef.current.play();
+        if (p && p.catch) {
+          p.catch((err) => console.warn("Manual play error:", err));
+        }
+      } else {
+        videoRef.current.pause();
+      }
+    }
+  };
+
   const handleReplay = () => {
     if (videoRef.current) {
       videoRef.current.currentTime = 0;
-      videoRef.current.play();
+      const p = videoRef.current.play();
+      if (p && p.catch) {
+        p.catch((err) => console.warn("Replay error:", err));
+      }
     }
   };
+
+  // Safe autoplay attempt whenever active video or mode changes
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.defaultMuted = true;
+      videoRef.current.muted = isMuted;
+      const playPromise = videoRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsPlaying(true);
+            setPlaybackError(null);
+          })
+          .catch((err) => {
+            console.warn("Autoplay deferred until user interaction:", err);
+            setIsPlaying(false);
+          });
+      }
+    }
+  }, [activeVideo?.id, playerMode]);
 
   const handleFullscreen = () => {
     if (videoRef.current) {
@@ -695,10 +734,24 @@ export default function CameraCenterTab({
                   controls
                   playsInline
                   autoPlay
+                  defaultMuted
                   muted={isMuted}
                   loop
-                  preload="metadata"
-                  crossOrigin="anonymous"
+                  preload="auto"
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => setIsPlaying(false)}
+                  onPlaying={() => {
+                    setIsPlaying(true);
+                    setIsBuffering(false);
+                    setPlaybackError(null);
+                  }}
+                  onWaiting={() => setIsBuffering(true)}
+                  onCanPlay={() => setIsBuffering(false)}
+                  onError={(e) => {
+                    const err = videoRef.current?.error;
+                    console.error("Video element playback error:", err);
+                    setPlaybackError(err ? `Video error (Code ${err.code}): ${err.message || "Decoding failed"}` : "Video stream error");
+                  }}
                   style={{
                     width: "100%",
                     maxHeight: "440px",
@@ -713,6 +766,55 @@ export default function CameraCenterTab({
                 >
                   Your browser does not support HTML5 video playback.
                 </video>
+
+                {/* Click-to-Play Overlay (Appears if browser autoplay is suspended or video is paused) */}
+                {!isPlaying && !isBuffering && (
+                  <button
+                    onClick={handleTogglePlay}
+                    aria-label="Play video"
+                    style={{
+                      position: "absolute",
+                      top: "50%",
+                      left: "50%",
+                      transform: "translate(-50%, -50%)",
+                      width: "68px",
+                      height: "68px",
+                      borderRadius: "50%",
+                      background: "rgba(11, 19, 43, 0.8)",
+                      border: "2px solid rgba(255, 255, 255, 0.9)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      boxShadow: "0 8px 30px rgba(0,0,0,0.6)",
+                      zIndex: 8,
+                      transition: "transform 0.15s ease",
+                    }}
+                  >
+                    <Play size={30} color="#ffffff" style={{ marginLeft: "4px" }} />
+                  </button>
+                )}
+
+                {playbackError && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      bottom: "55px",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      background: "rgba(220, 38, 38, 0.95)",
+                      color: "#ffffff",
+                      padding: "8px 16px",
+                      borderRadius: "6px",
+                      fontSize: "0.76rem",
+                      fontWeight: 600,
+                      zIndex: 12,
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+                    }}
+                  >
+                    {playbackError}
+                  </div>
+                )}
 
                 {/* In-Video HUD Overlays */}
                 <div
@@ -865,6 +967,25 @@ export default function CameraCenterTab({
               }}
             >
               <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                <button
+                  onClick={handleTogglePlay}
+                  style={{
+                    background: isPlaying ? "var(--accent-blue)" : "#059669",
+                    color: "#ffffff",
+                    border: "none",
+                    borderRadius: "4px",
+                    padding: "3px 10px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    fontWeight: 600,
+                    fontSize: "0.76rem",
+                  }}
+                >
+                  {isPlaying ? <Pause size={12} /> : <Play size={12} />}
+                  {isPlaying ? "Pause Stream" : "Play Stream"}
+                </button>
                 <button
                   onClick={handleReplay}
                   style={{
