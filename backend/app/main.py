@@ -62,6 +62,7 @@ if cors_origins_env:
     allow_origins = [orig.strip() for orig in cors_origins_env.split(",") if orig.strip()]
 else:
     allow_origins = [
+        "https://urbansense-ai-weld.vercel.app",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",
@@ -70,8 +71,8 @@ else:
         "http://127.0.0.1:8000",
     ]
 
-# Default regex allows any Vercel preview or production deployment (*.vercel.app)
-cors_origin_regex = os.getenv("CORS_ORIGIN_REGEX", r"^https://.*\.vercel\.app$")
+# Optional origin regex (disabled by default to prevent broad wildcard matching)
+cors_origin_regex = os.getenv("CORS_ORIGIN_REGEX") or None
 
 app.add_middleware(
     CORSMiddleware,

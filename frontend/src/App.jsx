@@ -56,9 +56,23 @@ export default function App() {
   const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isWakingUp, setIsWakingUp] = useState(false);
   const [processingState, setProcessingState] = useState({});
   const [selectedDrawerEvent, setSelectedDrawerEvent] = useState(null);
   const [currentTime, setCurrentTime] = useState("");
+
+  // Cold-start notification tracker (Render free-tier instances sleep when idle)
+  useEffect(() => {
+    let wakeTimer;
+    if (loading) {
+      wakeTimer = setTimeout(() => {
+        setIsWakingUp(true);
+      }, 3500);
+    } else {
+      setIsWakingUp(false);
+    }
+    return () => clearTimeout(wakeTimer);
+  }, [loading]);
 
   // Live Clock updater (IST)
   useEffect(() => {
@@ -99,7 +113,7 @@ export default function App() {
       console.error("API Fetch Error:", err);
       const backendTarget = API_BASE_URL || "http://localhost:8000";
       setError(
-        `Unable to connect to UrbanSense AI backend at ${backendTarget}. Please ensure the backend is running and CORS allows this domain.`
+        `Unable to reach backend at ${backendTarget}. If the backend is hosted on Render Free Tier, it may take 30–50 seconds to wake up from idle sleep. Please wait a moment and click Refresh.`
       );
     } finally {
       setLoading(false);
@@ -560,6 +574,28 @@ export default function App() {
           </div>
         </header>
 
+        {isWakingUp && !error && (
+          <div
+            style={{
+              margin: "12px 32px 0",
+              padding: "10px 16px",
+              background: "rgba(59, 130, 246, 0.12)",
+              border: "1px solid rgba(59, 130, 246, 0.3)",
+              borderRadius: "var(--radius-md)",
+              color: "#3b82f6",
+              fontSize: "0.84rem",
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+            }}
+          >
+            <RefreshCw size={14} className="spin-animation" />
+            <span>
+              <strong>Connecting to UrbanSense Cloud Backend:</strong> Render Free Tier instances spin down on inactivity and take 30–50 seconds to spin up. Telemetry and map overlays will load automatically once online.
+            </span>
+          </div>
+        )}
+
         {error && (
           <div
             style={{
@@ -570,9 +606,20 @@ export default function App() {
               borderRadius: "var(--radius-md)",
               color: "#dc2626",
               fontSize: "0.85rem",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
             }}
           >
-            {error}
+            <span>{error}</span>
+            <button
+              className="btn-outline"
+              onClick={fetchData}
+              style={{ whiteSpace: "nowrap", padding: "4px 12px", fontSize: "0.8rem", cursor: "pointer" }}
+            >
+              Retry Connection
+            </button>
           </div>
         )}
 

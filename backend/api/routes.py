@@ -12,7 +12,7 @@ import re
 from typing import List, Optional
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from sqlalchemy.orm import Session
 try:
@@ -100,11 +100,12 @@ def get_health():
             supported_classes=rdd.supported_classes,
         )
 
+    db_mode = "sqlite (ephemeral - resets on restart)" if os.getenv("CLOUD_MODE") == "free" else "sqlite"
     return HealthResponse(
         status="ok",
         version="0.2.0",
         device=device,
-        database="sqlite",
+        database=db_mode,
         timestamp=datetime.now(timezone.utc),
         road_damage_model=model_status,
     )
@@ -247,36 +248,93 @@ def list_events(
 def sync_detection_events(
     events: List[DetectionEventCreate],
     db: Session = Depends(get_db),
+    x_sync_token: Optional[str] = Header(None, alias="X-Sync-Token"),
+    authorization: Optional[str] = Header(None, alias="Authorization"),
 ):
     """
     Ingest pre-processed road hazard detection events from local Mac processing.
     Allows zero-cost cloud deployments to reflect local Apple MPS inference results.
+
+    Security & Deduplication:
+      - Authenticates via configurable SYNC_API_TOKEN (Header 'X-Sync-Token' or 'Authorization: Bearer <token>').
+      - Deduplicates events by event ID or coordinate/timestamp tuple, preventing duplicate inserts on retry.
+      - Ephemeral notice: on free cloud tiers without persistent disks, events persist for the container lifetime.
     """
-    created = []
-    for item in events:
-        ev = DetectionEvent(
-            id=f"EVT-{uuid.uuid4().hex[:10].upper()}",
-            event_type=item.event_type,
-            detection_class=item.detection_class,
-            confidence=round(item.confidence, 4),
-            bbox_x1=item.bbox_x1,
-            bbox_y1=item.bbox_y1,
-            bbox_x2=item.bbox_x2,
-            bbox_y2=item.bbox_y2,
-            bus_id=item.bus_id,
-            latitude=round(item.latitude, 6),
-            longitude=round(item.longitude, 6),
-            timestamp=item.timestamp or datetime.now(timezone.utc),
-            video_source=item.video_source,
-            severity=item.severity or "MEDIUM",
-            status="NEW",
-            is_simulated=item.is_simulated or False,
+    expected_token = os.getenv("SYNC_API_TOKEN", "").strip()
+    is_cloud_mode = os.getenv("CLOUD_MODE") == "free" or os.getenv("RENDER") == "true"
+
+    if expected_token:
+        provided_token = x_sync_token
+        if not provided_token and authorization:
+            if authorization.lower().startswith("bearer "):
+                provided_token = authorization[7:].strip()
+            else:
+                provided_token = authorization.strip()
+
+        if not provided_token or provided_token != expected_token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unauthorized: Invalid or missing sync token. Provide valid X-Sync-Token or Bearer token.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    elif is_cloud_mode:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cloud sync endpoint is disabled: SYNC_API_TOKEN must be configured in environment variables.",
         )
-        db.add(ev)
-        created.append(ev)
+
+    processed = []
+    for item in events:
+        # 1. Deduplication check by event ID
+        existing = None
+        if item.id:
+            existing = db.query(DetectionEvent).filter(DetectionEvent.id == item.id).first()
+
+        # 2. Fallback deduplication check by bus, detection class, and timestamp
+        if not existing and item.bus_id and item.timestamp:
+            existing = (
+                db.query(DetectionEvent)
+                .filter(
+                    DetectionEvent.bus_id == item.bus_id,
+                    DetectionEvent.detection_class == item.detection_class,
+                    DetectionEvent.timestamp == item.timestamp,
+                )
+                .first()
+            )
+
+        if existing:
+            # Idempotent update: update confidence/severity if newer, do not insert duplicate row
+            existing.confidence = max(existing.confidence, round(item.confidence, 4))
+            if item.severity:
+                existing.severity = item.severity
+            processed.append(existing)
+        else:
+            event_id = item.id if item.id else f"EVT-{uuid.uuid4().hex[:10].upper()}"
+            ev = DetectionEvent(
+                id=event_id,
+                event_type=item.event_type,
+                detection_class=item.detection_class,
+                confidence=round(item.confidence, 4),
+                bbox_x1=item.bbox_x1,
+                bbox_y1=item.bbox_y1,
+                bbox_x2=item.bbox_x2,
+                bbox_y2=item.bbox_y2,
+                bus_id=item.bus_id,
+                latitude=round(item.latitude, 6),
+                longitude=round(item.longitude, 6),
+                timestamp=item.timestamp or datetime.now(timezone.utc),
+                video_source=item.video_source,
+                severity=item.severity or "MEDIUM",
+                status="NEW",
+                is_simulated=item.is_simulated or False,
+            )
+            db.add(ev)
+            processed.append(ev)
+
     db.commit()
-    for ev in created:
+    for ev in processed:
         db.refresh(ev)
+
     return [
         DetectionEventResponse(
             id=e.id,
@@ -294,7 +352,7 @@ def sync_detection_events(
             is_simulated=e.is_simulated,
             created_at=e.created_at,
         )
-        for e in created
+        for e in processed
     ]
 
 

@@ -16,9 +16,9 @@ services:
       - key: CLOUD_MODE
         value: "free"
       - key: CORS_ORIGINS
-        value: http://localhost:5173,http://localhost:3000
-      - key: CORS_ORIGIN_REGEX
-        value: ^https://.*\.vercel\.app$
+        value: https://urbansense-ai-weld.vercel.app,http://localhost:5173,http://localhost:3000
+      - key: SYNC_API_TOKEN
+        generateValue: true
       - key: MAX_UPLOAD_SIZE_MB
         value: "100"
     # Note: Disks are not supported on Render Free tier.

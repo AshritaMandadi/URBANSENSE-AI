@@ -99,6 +99,7 @@ class DetectionEventResponse(BaseModel):
 
 
 class DetectionEventCreate(BaseModel):
+    id: Optional[str] = None
     event_type: str
     detection_class: str
     confidence: float
