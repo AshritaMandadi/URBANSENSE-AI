@@ -58,8 +58,7 @@ def resolve_road_damage_model_path(model_path: Optional[str] = None) -> str:
     # 1. Explicit argument
     if model_path:
         p = Path(model_path)
-        if p.is_file():
-            return str(p.resolve())
+        return str(p.resolve()) if p.is_absolute() else str((REPO_ROOT / p).resolve())
 
     # 2. Configurable environment variable
     env_path = os.getenv("ROAD_DAMAGE_MODEL_PATH")
@@ -91,8 +90,7 @@ def resolve_general_model_path(model_path: Optional[str] = None, default_name: s
     # 1. Explicit argument
     if model_path:
         p = Path(model_path)
-        if p.is_file():
-            return str(p.resolve())
+        return str(p.resolve()) if p.is_absolute() else str((REPO_ROOT / p).resolve())
 
     # 2. Configurable environment variables
     env_path = os.getenv("GENERAL_MODEL_PATH") or os.getenv("YOLO_MODEL_PATH")

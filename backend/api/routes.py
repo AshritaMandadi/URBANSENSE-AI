@@ -10,11 +10,17 @@ import os
 from pathlib import Path
 import re
 from typing import List, Optional
+import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from sqlalchemy.orm import Session
-import torch
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    torch = None
+    TORCH_AVAILABLE = False
 
 from backend.api.schemas import (
     AnalyticsSummaryResponse,
@@ -22,6 +28,7 @@ from backend.api.schemas import (
     BusCameraConfigResponse,
     BusResponse,
     CameraChannelStatus,
+    DetectionEventCreate,
     DetectionEventResponse,
     EventStatusUpdate,
     HealthResponse,
@@ -66,27 +73,69 @@ router = APIRouter()
 @router.get("/health", response_model=HealthResponse, tags=["System"])
 def get_health():
     """System health check and runtime device/model status."""
-    device = "mps" if torch.backends.mps.is_available() else "cpu"
-    rdd = RoadDamageDetector()
+    inference_enabled = os.getenv("ENABLE_SERVER_INFERENCE", "true").lower() in ("true", "1", "yes")
+
+    if not inference_enabled or not TORCH_AVAILABLE:
+        device = "cloud-free-tier"
+        model_status = RoadDamageModelStatus(
+            status="LOCAL_ONLY",
+            is_ready=False,
+            model_path="N/A (Cloud inference disabled on Free tier)",
+            loading_error="Server-side AI processing is disabled on the Free tier (512 MB RAM limit). Video processing is LOCAL_ONLY on Apple Silicon Mac.",
+            supported_classes={
+                "0": "longitudinal_crack",
+                "1": "transverse_crack",
+                "2": "alligator_crack",
+                "3": "pothole",
+            },
+        )
+    else:
+        device = "mps" if (torch and torch.backends.mps.is_available()) else "cpu"
+        rdd = RoadDamageDetector()
+        model_status = RoadDamageModelStatus(
+            status=rdd.status,
+            is_ready=rdd.is_model_ready,
+            model_path=rdd.model_path,
+            loading_error=rdd.loading_error,
+            supported_classes=rdd.supported_classes,
+        )
+
     return HealthResponse(
         status="ok",
         version="0.2.0",
         device=device,
         database="sqlite",
         timestamp=datetime.now(timezone.utc),
-        road_damage_model=RoadDamageModelStatus(
-            status=rdd.status,
-            is_ready=rdd.is_model_ready,
-            model_path=rdd.model_path,
-            loading_error=rdd.loading_error,
-            supported_classes=rdd.supported_classes,
-        ),
+        road_damage_model=model_status,
     )
 
 
 @router.get("/api/models/road-damage/status", tags=["System"])
 def get_road_damage_model_status():
     """Detailed runtime diagnostic status for the specialized road damage model."""
+    inference_enabled = os.getenv("ENABLE_SERVER_INFERENCE", "true").lower() in ("true", "1", "yes")
+    if not inference_enabled or not TORCH_AVAILABLE:
+        return {
+            "model_name": "YOLO11n-RDD2022",
+            "model_path": "N/A (Local Processing Only)",
+            "device": "cloud-free-tier",
+            "status": "LOCAL_ONLY",
+            "is_ready": False,
+            "loading_error": "Server-side AI inference is disabled on Free tier to guarantee zero hosting cost within 512 MB RAM. Process road videos locally using your Apple Silicon Mac (Apple MPS) and sync detection telemetry to this dashboard.",
+            "supported_classes": {
+                0: "longitudinal_crack",
+                1: "transverse_crack",
+                2: "alligator_crack",
+                3: "pothole",
+            },
+            "target_classes": {
+                0: "longitudinal_crack",
+                1: "transverse_crack",
+                2: "alligator_crack",
+                3: "pothole",
+            },
+            "message": "Local processing mode active. Zero cloud hosting cost.",
+        }
     detector = RoadDamageDetector()
     return detector.get_status()
 
@@ -191,6 +240,61 @@ def list_events(
             created_at=e.created_at,
         )
         for e in events
+    ]
+
+
+@router.post("/api/events/sync", response_model=List[DetectionEventResponse], tags=["Events"])
+def sync_detection_events(
+    events: List[DetectionEventCreate],
+    db: Session = Depends(get_db),
+):
+    """
+    Ingest pre-processed road hazard detection events from local Mac processing.
+    Allows zero-cost cloud deployments to reflect local Apple MPS inference results.
+    """
+    created = []
+    for item in events:
+        ev = DetectionEvent(
+            id=f"EVT-{uuid.uuid4().hex[:10].upper()}",
+            event_type=item.event_type,
+            detection_class=item.detection_class,
+            confidence=round(item.confidence, 4),
+            bbox_x1=item.bbox_x1,
+            bbox_y1=item.bbox_y1,
+            bbox_x2=item.bbox_x2,
+            bbox_y2=item.bbox_y2,
+            bus_id=item.bus_id,
+            latitude=round(item.latitude, 6),
+            longitude=round(item.longitude, 6),
+            timestamp=item.timestamp or datetime.now(timezone.utc),
+            video_source=item.video_source,
+            severity=item.severity or "MEDIUM",
+            status="NEW",
+            is_simulated=item.is_simulated or False,
+        )
+        db.add(ev)
+        created.append(ev)
+    db.commit()
+    for ev in created:
+        db.refresh(ev)
+    return [
+        DetectionEventResponse(
+            id=e.id,
+            event_type=e.event_type,
+            detection_class=e.detection_class,
+            confidence=e.confidence,
+            bbox=(e.bbox_x1, e.bbox_y1, e.bbox_x2, e.bbox_y2),
+            bus_id=e.bus_id,
+            latitude=e.latitude,
+            longitude=e.longitude,
+            timestamp=e.timestamp,
+            video_source=e.video_source,
+            severity=e.severity,
+            status=e.status,
+            is_simulated=e.is_simulated,
+            created_at=e.created_at,
+        )
+        for e in created
     ]
 
 

@@ -1,0 +1,27 @@
+# UrbanSense AI - Free Tier Zero-Cost Render Cloud Blueprint
+# 100% Free Hosting - Fits within Render's Free Instance (512 MB RAM, 0.1 CPU, $0.00/month)
+# Server-side YOLO inference disabled; Local Mac (Apple MPS) AI processing with cloud sync
+
+services:
+  - type: web
+    name: urbansense-backend-free
+    env: docker
+    dockerfilePath: ./Dockerfile.free
+    dockerContext: .
+    plan: free # Free instance: 512 MB RAM, 0.1 CPU, $0.00/month
+    region: oregon # or frankfurt, singapore
+    envVars:
+      - key: ENABLE_SERVER_INFERENCE
+        value: "false"
+      - key: CLOUD_MODE
+        value: "free"
+      - key: CORS_ORIGINS
+        value: http://localhost:5173,http://localhost:3000
+      - key: CORS_ORIGIN_REGEX
+        value: ^https://.*\.vercel\.app$
+      - key: MAX_UPLOAD_SIZE_MB
+        value: "100"
+    # Note: Disks are not supported on Render Free tier.
+    # The application automatically seeds demo data, fleet telemetry,
+    # routes, and road distress events into SQLite on container boot.
+

@@ -20,11 +20,17 @@ if "YOLO_CONFIG_DIR" not in os.environ:
 
 try:
     import numpy as np
+except ImportError:
+    np = None
+
+try:
     import torch
     from ultralytics import YOLO
-except ImportError as err:
-    print(f"Error importing detection dependencies: {err}", file=sys.stderr)
-    raise
+    TORCH_AVAILABLE = True
+except ImportError:
+    torch = None
+    YOLO = None
+    TORCH_AVAILABLE = False
 
 
 @dataclass(frozen=True)
@@ -137,13 +143,20 @@ class GeneralObjectDetector(BaseDetector):
         # Select Apple MPS when available, otherwise CPU
         if device is not None:
             self._device = device
+        elif TORCH_AVAILABLE and torch.backends.mps.is_available():
+            self._device = "mps"
         else:
-            self._device = "mps" if torch.backends.mps.is_available() else "cpu"
+            self._device = "cpu"
 
         self._is_ready = False
-        self._status = "NOT_READY"
-        self._loading_error: Optional[str] = None
+        self._status = "NOT_READY" if TORCH_AVAILABLE else "NOT_AVAILABLE"
+        self._loading_error: Optional[str] = (
+            None if TORCH_AVAILABLE else "PyTorch/Ultralytics is not installed on this cloud instance (Free Tier)."
+        )
         self._model = None
+
+        if not TORCH_AVAILABLE:
+            return
 
         # Lightweight readiness inspection
         is_ready, status, size, err = inspect_model_readiness(self._model_path)
@@ -158,6 +171,8 @@ class GeneralObjectDetector(BaseDetector):
         """Internal helper to load YOLO model weights into memory."""
         if self._model is not None:
             return
+        if not TORCH_AVAILABLE:
+            raise RuntimeError("Cannot load model: PyTorch/Ultralytics is not installed on this host.")
         from ultralytics import YOLO
         try:
             self._model = YOLO(self._model_path)

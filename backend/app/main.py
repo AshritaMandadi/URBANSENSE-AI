@@ -32,13 +32,17 @@ async def lifespan(app: FastAPI):
     init_db()
     seed_database()
 
-    # Automatically provision model weights if remote secure URLs are configured
-    try:
-        from ai_engine.detection.model_provisioner import provision_models_if_configured
-        provision_results = provision_models_if_configured()
-        logger.info(f"Model provisioning status: {provision_results}")
-    except Exception as e:
-        logger.warning(f"Model provisioning check deferred: {e}")
+    # Automatically provision model weights if remote secure URLs are configured and inference is enabled
+    inference_enabled = os.getenv("ENABLE_SERVER_INFERENCE", "true").lower() in ("true", "1", "yes")
+    if inference_enabled:
+        try:
+            from ai_engine.detection.model_provisioner import provision_models_if_configured
+            provision_results = provision_models_if_configured()
+            logger.info(f"Model provisioning status: {provision_results}")
+        except Exception as e:
+            logger.warning(f"Model provisioning check deferred: {e}")
+    else:
+        logger.info("Server-side inference disabled (Free Tier mode). Running lightweight API and telemetry services.")
 
     logger.info("UrbanSense AI backend ready.")
     yield

@@ -1,0 +1,15 @@
+# UrbanSense AI - Free-Tier Production Backend Dependencies
+# Zero-cost cloud hosting configuration for Render Free Tier (512 MB RAM limit)
+# Excludes heavy ML runtimes (PyTorch, Torchvision, CUDA, Ultralytics)
+# Serves full REST APIs, GIS telemetry, route PCI analytics, and video streaming in ~50 MB RAM
+
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+sqlalchemy>=2.0.0
+pydantic>=2.0.0
+python-multipart>=0.0.12
+opencv-python-headless>=4.8.0
+numpy>=1.24.0,<2.2.0
+httpx>=0.27.0
+requests>=2.31.0
+

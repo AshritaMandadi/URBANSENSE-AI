@@ -1,0 +1,49 @@
+# UrbanSense AI - Free-Tier Production Dockerfile
+# Optimized for Render Free Tier (512 MB RAM limit, 0.1 CPU, zero hosting cost)
+# Excludes heavy ML runtimes (PyTorch, Torchvision, CUDA, Ultralytics)
+# Serves full REST APIs, GIS telemetry, route PCI analytics, and video streaming in ~50 MB RAM
+
+FROM python:3.11-slim
+
+# System configuration & environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PORT=8000 \
+    HOST=0.0.0.0 \
+    ENABLE_SERVER_INFERENCE=false \
+    CLOUD_MODE=free
+
+WORKDIR /app
+
+# Install minimal OS runtime libraries for video metadata probing and health checks
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    libglib2.0-0 \
+    libgomp1 \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install lightweight backend dependencies (NO PyTorch/CUDA/Ultralytics)
+COPY requirements-free.txt .
+RUN pip install --no-cache-dir -r requirements-free.txt
+
+# Copy application source modules
+COPY backend/ ./backend/
+COPY ai_engine/ ./ai_engine/
+COPY models/ ./models/
+
+# Prepare ephemeral runtime directory (seeds automatically on container start)
+RUN mkdir -p /app/data/videos /app/data/models /tmp \
+    && chmod -R 777 /app/data /tmp
+
+EXPOSE 8000
+
+# Container health probe
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
+
+# Start lightweight FastAPI backend with single worker for maximum memory efficiency
+CMD ["sh", "-c", "exec uvicorn backend.app.main:app --host ${HOST:-0.0.0.0} --port ${PORT:-8000} --workers 1"]
+

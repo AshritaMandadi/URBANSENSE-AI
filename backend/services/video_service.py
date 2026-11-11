@@ -16,10 +16,8 @@ import cv2
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
-from ai_engine.detection.combined_detector import CombinedDetector
-from ai_engine.detection.detector import GeneralObjectDetector
-from ai_engine.detection.road_damage_detector import RoadDamageDetector
-from ai_engine.video_processing.video_processor import VideoProcessor, SUPPORTED_VIDEO_EXTENSIONS
+SUPPORTED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".m4v"}
+
 from backend.database.models import ProcessingJob, UploadedVideo
 from backend.services.event_service import EventService
 from backend.services.gps_service import GPSService
@@ -136,6 +134,18 @@ class VideoService:
         summary_path = VIDEOS_DIR / f"summary_{video_id}.json"
 
         try:
+            is_inference_enabled = os.getenv("ENABLE_SERVER_INFERENCE", "true").lower() in ("true", "1", "yes")
+            if not is_inference_enabled:
+                raise RuntimeError(
+                    "Cloud server-side AI processing is disabled on the Free tier (512 MB RAM limit). "
+                    "Execute video processing locally on your Apple Silicon Mac, and sync detection events to this cloud instance."
+                )
+
+            from ai_engine.detection.combined_detector import CombinedDetector
+            from ai_engine.detection.detector import GeneralObjectDetector
+            from ai_engine.detection.road_damage_detector import RoadDamageDetector
+            from ai_engine.video_processing.video_processor import VideoProcessor
+
             # 1. Select and initialize detector
             norm_type = (detector_type or "general").strip().lower()
             if norm_type in ("road_damage", "road-damage", "roaddamage", "damage"):
