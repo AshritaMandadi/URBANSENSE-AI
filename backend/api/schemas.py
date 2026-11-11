@@ -188,6 +188,8 @@ class UploadedVideoResponse(BaseModel):
     latest_job_status: Optional[str] = None
     has_annotated: Optional[bool] = False
     events_count: Optional[int] = 0
+    demo_media_url: Optional[str] = None
+    annotated_demo_url: Optional[str] = None
 
     class Config:
         from_attributes = True

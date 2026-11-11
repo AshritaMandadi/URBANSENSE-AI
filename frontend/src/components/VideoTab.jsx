@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { apiUrl } from "../api/client";
+import { BUILTIN_DEMO_RECORDINGS } from "./CameraCenterTab";
 import {
   Upload,
   Play,
@@ -16,17 +17,29 @@ import {
 } from "lucide-react";
 
 export default function VideoTab({ videos, buses, onUpload, onProcess, processingState, health }) {
+  const allVideos = useMemo(() => {
+    const list = [...BUILTIN_DEMO_RECORDINGS];
+    const seenIds = new Set(list.map((v) => v.id));
+    for (const v of (videos || [])) {
+      if (!seenIds.has(v.id)) {
+        list.push(v);
+        seenIds.add(v.id);
+      }
+    }
+    return list;
+  }, [videos]);
+
   const [selectedFile, setSelectedFile] = useState(null);
   const [selectedBus, setSelectedBus] = useState("BUS-TG-101");
   const [uploading, setUploading] = useState(false);
-  const [activeVideoId, setActiveVideoId] = useState(videos && videos.length > 0 ? videos[0].id : null);
+  const [activeVideoId, setActiveVideoId] = useState(allVideos && allVideos.length > 0 ? allVideos[0].id : null);
   const [playerMode, setPlayerMode] = useState("original"); // "original" or "annotated"
   const [detectorTypes, setDetectorTypes] = useState({});
 
   const isRoadDamageReady = health?.road_damage_model?.status === "READY";
 
   // Find currently active video object
-  const activeVideo = videos ? videos.find((v) => v.id === activeVideoId) : null;
+  const activeVideo = allVideos ? allVideos.find((v) => v.id === activeVideoId) : null;
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
@@ -367,14 +380,14 @@ export default function VideoTab({ videos, buses, onUpload, onProcess, processin
                     playsInline
                     preload="auto"
                     style={{ width: "100%", maxHeight: "360px", display: "block" }}
-                    src={apiUrl(`/api/videos/${activeVideo.id}/stream`)}
+                    src={activeVideo.demo_media_url || apiUrl(`/api/videos/${activeVideo.id}/stream`)}
                   >
                     Your browser does not support HTML5 video playback.
                   </video>
                 </div>
                 <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)", marginTop: "10px", display: "flex", justifyContent: "space-between" }}>
-                  <span>Source: <code>{apiUrl(`/api/videos/${activeVideo.id}/stream`)}</code></span>
-                  <span>HTTP 206 Byte-Range Streaming</span>
+                  <span>Source: <code>{activeVideo.demo_media_url || apiUrl(`/api/videos/${activeVideo.id}/stream`)}</code></span>
+                  <span>{activeVideo.demo_media_url ? "Vercel Edge CDN Streaming" : "HTTP 206 Byte-Range Streaming"}</span>
                 </div>
               </div>
             ) : (
@@ -388,7 +401,7 @@ export default function VideoTab({ videos, buses, onUpload, onProcess, processin
                         playsInline
                         preload="auto"
                         style={{ width: "100%", maxHeight: "360px", display: "block" }}
-                        src={apiUrl(`/api/videos/${activeVideo.id}/annotated`)}
+                        src={activeVideo.annotated_demo_url || (activeVideo.has_annotated ? apiUrl(`/api/videos/${activeVideo.id}/annotated`) : activeVideo.demo_media_url || apiUrl(`/api/videos/${activeVideo.id}/stream`))}
                       >
                         Your browser does not support HTML5 video playback.
                       </video>

@@ -22,7 +22,9 @@ from backend.database.models import (
     DetectionEvent,
     GPSRecord,
     OperatorUser,
+    ProcessingJob,
     Route,
+    UploadedVideo,
     WorkOrder,
 )
 from backend.database.session import SessionLocal, engine
@@ -171,122 +173,118 @@ def seed_database() -> None:
     db: Session = SessionLocal()
 
     try:
-        # Check if migration is required for existing database
-        migrated = migrate_legacy_delhi_to_telangana(db)
-        if migrated:
-            return
-
-        # Check if already seeded with Telangana routes
-        if db.query(Route).filter(Route.id.like("ROUTE-TG-%")).first():
-            return
-
         now = datetime.now(timezone.utc)
 
-        # 1. Routes
-        for route in TELANGANA_ROUTES:
-            db.add(route)
-        db.flush()
+        # Check if migration is required for existing database
+        migrate_legacy_delhi_to_telangana(db)
 
-        # 2. Buses
-        for bus in TELANGANA_BUSES:
-            db.add(bus)
-        db.flush()
+        # 1. Seed Telangana routes, fleet, GPS records, and demo events if not populated
+        if not db.query(Route).filter(Route.id.like("ROUTE-TG-%")).first():
+            # Routes
+            for route in TELANGANA_ROUTES:
+                db.add(route)
+            db.flush()
 
-        # 3. GPS Records (Simulated telemetry along Telangana route waypoints)
-        gps_records = [
-            # BUS-TG-101 along Route TG-01 (Hyderabad Spine)
-            GPSRecord(bus_id="BUS-TG-101", route_id="ROUTE-TG-01", latitude=17.4399, longitude=78.4983, speed_kmh=36.5, heading_deg=220.0, timestamp=now - timedelta(minutes=1), is_simulated=True),
-            GPSRecord(bus_id="BUS-TG-101", route_id="ROUTE-TG-01", latitude=17.4504, longitude=78.3808, speed_kmh=42.0, heading_deg=260.0, timestamp=now - timedelta(minutes=5), is_simulated=True),
-            # BUS-TG-102 along Route TG-01
-            GPSRecord(bus_id="BUS-TG-102", route_id="ROUTE-TG-01", latitude=17.3789, longitude=78.4812, speed_kmh=28.4, heading_deg=310.0, timestamp=now - timedelta(minutes=2), is_simulated=True),
-            # BUS-TG-201 along Route TG-02 (Siddipet / Karimnagar)
-            GPSRecord(bus_id="BUS-TG-201", route_id="ROUTE-TG-02", latitude=18.1018, longitude=78.8520, speed_kmh=52.0, heading_deg=35.0, timestamp=now - timedelta(seconds=45), is_simulated=True),
-            # BUS-TG-301 along Route TG-03 (Warangal Highway)
-            GPSRecord(bus_id="BUS-TG-301", route_id="ROUTE-TG-03", latitude=17.9784, longitude=79.5941, speed_kmh=48.0, heading_deg=65.0, timestamp=now - timedelta(minutes=7), is_simulated=True),
-            # BUS-TG-401 along Route TG-04 (Khammam Corridor)
-            GPSRecord(bus_id="BUS-TG-401", route_id="ROUTE-TG-04", latitude=17.2473, longitude=80.1514, speed_kmh=50.5, heading_deg=105.0, timestamp=now - timedelta(minutes=3), is_simulated=True),
-            # BUS-TG-501 at Nizamabad Depot
-            GPSRecord(bus_id="BUS-TG-501", route_id="ROUTE-TG-05", latitude=18.6725, longitude=78.0941, speed_kmh=0.0, heading_deg=0.0, timestamp=now - timedelta(minutes=15), is_simulated=True),
-            # BUS-TG-601 at Mahabubnagar Depot
-            GPSRecord(bus_id="BUS-TG-601", route_id="ROUTE-TG-06", latitude=16.7488, longitude=77.9856, speed_kmh=0.0, heading_deg=0.0, timestamp=now - timedelta(minutes=15), is_simulated=True),
-        ]
-        db.add_all(gps_records)
+            # Buses
+            for bus in TELANGANA_BUSES:
+                db.add(bus)
+            db.flush()
 
-        # 4. Initial Sample Labeled Events across Telangana (Clearly marked is_simulated=True)
-        demo_events = [
-            DetectionEvent(
-                id="EVT-DEMO-001",
-                event_type="POTHOLE",
-                detection_class="pothole",
-                confidence=0.91,
-                bbox_x1=140, bbox_y1=220, bbox_x2=310, bbox_y2=340,
-                bus_id="BUS-TG-101",
-                latitude=17.4420, longitude=78.3840,  # Near Hitec City, Hyderabad
-                timestamp=now - timedelta(minutes=25),
-                video_source="simulated_tg_fleet_run_101.mp4",
-                severity="HIGH",
-                status="NEW",
-                is_simulated=True,
-            ),
-            DetectionEvent(
-                id="EVT-DEMO-002",
-                event_type="ROAD_CRACK",
-                detection_class="alligator_crack",
-                confidence=0.84,
-                bbox_x1=80, bbox_y1=190, bbox_x2=260, bbox_y2=310,
-                bus_id="BUS-TG-101",
-                latitude=17.4350, longitude=78.4890,  # Secunderabad corridor
-                timestamp=now - timedelta(minutes=20),
-                video_source="simulated_tg_fleet_run_101.mp4",
-                severity="MEDIUM",
-                status="NEW",
-                is_simulated=True,
-            ),
-            DetectionEvent(
-                id="EVT-DEMO-003",
-                event_type="POTHOLE",
-                detection_class="pothole",
-                confidence=0.94,
-                bbox_x1=210, bbox_y1=260, bbox_x2=390, bbox_y2=380,
-                bus_id="BUS-TG-201",
-                latitude=18.1050, longitude=78.8540,  # Siddipet bypass
-                timestamp=now - timedelta(minutes=12),
-                video_source="simulated_tg_fleet_run_201.mp4",
-                severity="CRITICAL",
-                status="VERIFIED",
-                is_simulated=True,
-            ),
-            DetectionEvent(
-                id="EVT-DEMO-004",
-                event_type="VEHICLE_DETECTION",
-                detection_class="bus",
-                confidence=0.89,
-                bbox_x1=40, bbox_y1=80, bbox_x2=280, bbox_y2=350,
-                bus_id="BUS-TG-102",
-                latitude=17.3810, longitude=78.4790,  # MGBS approach
-                timestamp=now - timedelta(minutes=8),
-                video_source="simulated_tg_fleet_run_102.mp4",
-                severity="INFO",
-                status="VERIFIED",
-                is_simulated=True,
-            ),
-            DetectionEvent(
-                id="EVT-DEMO-005",
-                event_type="ROAD_DAMAGE",
-                detection_class="longitudinal_crack",
-                confidence=0.78,
-                bbox_x1=150, bbox_y1=180, bbox_x2=240, bbox_y2=320,
-                bus_id="BUS-TG-301",
-                latitude=17.9740, longitude=79.5890,  # Kazipet-Warangal highway
-                timestamp=now - timedelta(minutes=4),
-                video_source="simulated_tg_fleet_run_301.mp4",
-                severity="LOW",
-                status="NEW",
-                is_simulated=True,
-            ),
-        ]
-        db.add_all(demo_events)
-        db.commit()
+            # GPS Records (Simulated telemetry along Telangana route waypoints)
+            gps_records = [
+                # BUS-TG-101 along Route TG-01 (Hyderabad Spine)
+                GPSRecord(bus_id="BUS-TG-101", route_id="ROUTE-TG-01", latitude=17.4399, longitude=78.4983, speed_kmh=36.5, heading_deg=220.0, timestamp=now - timedelta(minutes=1), is_simulated=True),
+                GPSRecord(bus_id="BUS-TG-101", route_id="ROUTE-TG-01", latitude=17.4504, longitude=78.3808, speed_kmh=42.0, heading_deg=260.0, timestamp=now - timedelta(minutes=5), is_simulated=True),
+                # BUS-TG-102 along Route TG-01
+                GPSRecord(bus_id="BUS-TG-102", route_id="ROUTE-TG-01", latitude=17.3789, longitude=78.4812, speed_kmh=28.4, heading_deg=310.0, timestamp=now - timedelta(minutes=2), is_simulated=True),
+                # BUS-TG-201 along Route TG-02 (Siddipet / Karimnagar)
+                GPSRecord(bus_id="BUS-TG-201", route_id="ROUTE-TG-02", latitude=18.1018, longitude=78.8520, speed_kmh=52.0, heading_deg=35.0, timestamp=now - timedelta(seconds=45), is_simulated=True),
+                # BUS-TG-301 along Route TG-03 (Warangal Highway)
+                GPSRecord(bus_id="BUS-TG-301", route_id="ROUTE-TG-03", latitude=17.9784, longitude=79.5941, speed_kmh=48.0, heading_deg=65.0, timestamp=now - timedelta(minutes=7), is_simulated=True),
+                # BUS-TG-401 along Route TG-04 (Khammam Corridor)
+                GPSRecord(bus_id="BUS-TG-401", route_id="ROUTE-TG-04", latitude=17.2473, longitude=80.1514, speed_kmh=50.5, heading_deg=105.0, timestamp=now - timedelta(minutes=3), is_simulated=True),
+                # BUS-TG-501 at Nizamabad Depot
+                GPSRecord(bus_id="BUS-TG-501", route_id="ROUTE-TG-05", latitude=18.6725, longitude=78.0941, speed_kmh=0.0, heading_deg=0.0, timestamp=now - timedelta(minutes=15), is_simulated=True),
+                # BUS-TG-601 at Mahabubnagar Depot
+                GPSRecord(bus_id="BUS-TG-601", route_id="ROUTE-TG-06", latitude=16.7488, longitude=77.9856, speed_kmh=0.0, heading_deg=0.0, timestamp=now - timedelta(minutes=15), is_simulated=True),
+            ]
+            db.add_all(gps_records)
+
+            # Initial Sample Labeled Events across Telangana (Clearly marked is_simulated=True)
+            demo_events = [
+                DetectionEvent(
+                    id="EVT-DEMO-001",
+                    event_type="POTHOLE",
+                    detection_class="pothole",
+                    confidence=0.91,
+                    bbox_x1=140, bbox_y1=220, bbox_x2=310, bbox_y2=340,
+                    bus_id="BUS-TG-101",
+                    latitude=17.4420, longitude=78.3840,  # Near Hitec City, Hyderabad
+                    timestamp=now - timedelta(minutes=25),
+                    video_source="simulated_tg_fleet_run_101.mp4",
+                    severity="HIGH",
+                    status="NEW",
+                    is_simulated=True,
+                ),
+                DetectionEvent(
+                    id="EVT-DEMO-002",
+                    event_type="ROAD_CRACK",
+                    detection_class="alligator_crack",
+                    confidence=0.84,
+                    bbox_x1=80, bbox_y1=190, bbox_x2=260, bbox_y2=310,
+                    bus_id="BUS-TG-101",
+                    latitude=17.4350, longitude=78.4890,  # Secunderabad corridor
+                    timestamp=now - timedelta(minutes=20),
+                    video_source="simulated_tg_fleet_run_101.mp4",
+                    severity="MEDIUM",
+                    status="NEW",
+                    is_simulated=True,
+                ),
+                DetectionEvent(
+                    id="EVT-DEMO-003",
+                    event_type="POTHOLE",
+                    detection_class="pothole",
+                    confidence=0.94,
+                    bbox_x1=210, bbox_y1=260, bbox_x2=390, bbox_y2=380,
+                    bus_id="BUS-TG-201",
+                    latitude=18.1050, longitude=78.8540,  # Siddipet bypass
+                    timestamp=now - timedelta(minutes=12),
+                    video_source="simulated_tg_fleet_run_201.mp4",
+                    severity="CRITICAL",
+                    status="VERIFIED",
+                    is_simulated=True,
+                ),
+                DetectionEvent(
+                    id="EVT-DEMO-004",
+                    event_type="VEHICLE_DETECTION",
+                    detection_class="bus",
+                    confidence=0.89,
+                    bbox_x1=40, bbox_y1=80, bbox_x2=280, bbox_y2=350,
+                    bus_id="BUS-TG-102",
+                    latitude=17.3810, longitude=78.4790,  # MGBS approach
+                    timestamp=now - timedelta(minutes=8),
+                    video_source="simulated_tg_fleet_run_102.mp4",
+                    severity="INFO",
+                    status="VERIFIED",
+                    is_simulated=True,
+                ),
+                DetectionEvent(
+                    id="EVT-DEMO-005",
+                    event_type="ROAD_DAMAGE",
+                    detection_class="longitudinal_crack",
+                    confidence=0.78,
+                    bbox_x1=150, bbox_y1=180, bbox_x2=240, bbox_y2=320,
+                    bus_id="BUS-TG-301",
+                    latitude=17.9740, longitude=79.5890,  # Kazipet-Warangal highway
+                    timestamp=now - timedelta(minutes=4),
+                    video_source="simulated_tg_fleet_run_301.mp4",
+                    severity="LOW",
+                    status="NEW",
+                    is_simulated=True,
+                ),
+            ]
+            db.add_all(demo_events)
+            db.commit()
         # Seed operator accounts if empty
         if db.query(OperatorUser).count() == 0:
             demo_users = [
@@ -371,6 +369,60 @@ def seed_database() -> None:
                 ),
             ]
             db.add_all(demo_orders)
+            db.commit()
+
+        # Seed genuine survey trial recordings for fleet units (truthfully marked as pre-recorded road trials)
+        if db.query(UploadedVideo).filter(UploadedVideo.id.like("VID-TG-%-SURVEY")).count() == 0:
+            demo_videos = [
+                UploadedVideo(
+                    id="VID-TG-101-SURVEY",
+                    filename="indian_bus_dashcam_road_survey.mp4",
+                    file_path="/app/data/videos/VID-TG-101-SURVEY.mp4",
+                    file_size_bytes=13508624,
+                    uploaded_at=now - timedelta(hours=2),
+                    duration_seconds=35.6,
+                    frame_count=890,
+                    fps=25.0,
+                    bus_id="BUS-TG-101",
+                    camera_channel="front",
+                ),
+                UploadedVideo(
+                    id="VID-TG-201-SURVEY",
+                    filename="pothole_road_survey_front_camera.mp4",
+                    file_path="/app/data/videos/VID-TG-201-SURVEY.mp4",
+                    file_size_bytes=2968965,
+                    uploaded_at=now - timedelta(hours=1),
+                    duration_seconds=30.0,
+                    frame_count=750,
+                    fps=25.0,
+                    bus_id="BUS-TG-201",
+                    camera_channel="front",
+                ),
+            ]
+            db.add_all(demo_videos)
+            db.commit()
+
+            demo_jobs = [
+                ProcessingJob(
+                    id="JOB-TG-101-SURVEY",
+                    video_id="VID-TG-101-SURVEY",
+                    status="COMPLETED",
+                    created_at=now - timedelta(hours=2),
+                    completed_at=now - timedelta(hours=2, seconds=-25),
+                    annotated_video_path="/app/data/videos/annotated_VID-TG-101-SURVEY.mp4",
+                    events_generated_count=12,
+                ),
+                ProcessingJob(
+                    id="JOB-TG-201-SURVEY",
+                    video_id="VID-TG-201-SURVEY",
+                    status="COMPLETED",
+                    created_at=now - timedelta(hours=1),
+                    completed_at=now - timedelta(hours=1, seconds=-12),
+                    annotated_video_path="/app/data/videos/annotated_VID-TG-201-SURVEY.mp4",
+                    events_generated_count=8,
+                ),
+            ]
+            db.add_all(demo_jobs)
             db.commit()
 
         logger.info("Seeded Telangana transit network database successfully.")

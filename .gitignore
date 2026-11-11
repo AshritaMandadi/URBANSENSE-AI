@@ -39,6 +39,7 @@ data/sample/*
 *.avi
 *.mkv
 *.webm
+!frontend/public/demo_media/*.mp4
 
 # Node.js & Vite build artifacts
 node_modules/

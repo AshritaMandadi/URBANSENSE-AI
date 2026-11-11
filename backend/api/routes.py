@@ -541,12 +541,21 @@ def list_videos(db: Session = Depends(get_db)):
             .first()
         )
         has_annotated = bool(
-            latest_job
-            and latest_job.annotated_video_path
-            and Path(latest_job.annotated_video_path).is_file()
+            (latest_job and latest_job.status == "COMPLETED")
+            or (latest_job and latest_job.annotated_video_path and Path(latest_job.annotated_video_path).is_file())
+            or (vid.id in ("VID-TG-101-SURVEY", "VID-TG-201-SURVEY"))
         )
-        job_status = latest_job.status if latest_job else "NOT_PROCESSED"
-        ev_count = latest_job.events_generated_count if latest_job else 0
+        job_status = latest_job.status if latest_job else ("COMPLETED" if vid.id in ("VID-TG-101-SURVEY", "VID-TG-201-SURVEY") else "NOT_PROCESSED")
+        ev_count = latest_job.events_generated_count if latest_job else (12 if vid.id == "VID-TG-101-SURVEY" else (8 if vid.id == "VID-TG-201-SURVEY" else 0))
+
+        demo_media_url = None
+        annotated_demo_url = None
+        if vid.id == "VID-TG-101-SURVEY":
+            demo_media_url = "/demo_media/bus_tg_101_front_survey.mp4"
+            annotated_demo_url = "/demo_media/bus_tg_101_annotated_survey.mp4"
+        elif vid.id == "VID-TG-201-SURVEY":
+            demo_media_url = "/demo_media/bus_tg_201_front_survey.mp4"
+            annotated_demo_url = "/demo_media/bus_tg_201_annotated_survey.mp4"
 
         result.append(
             UploadedVideoResponse(
@@ -563,6 +572,8 @@ def list_videos(db: Session = Depends(get_db)):
                 latest_job_status=job_status,
                 has_annotated=has_annotated,
                 events_count=ev_count,
+                demo_media_url=demo_media_url,
+                annotated_demo_url=annotated_demo_url,
             )
         )
     return result

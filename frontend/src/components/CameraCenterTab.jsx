@@ -74,6 +74,39 @@ const CAMERA_CHANNELS = [
   },
 ];
 
+export const BUILTIN_DEMO_RECORDINGS = [
+  {
+    id: "VID-TG-101-SURVEY",
+    bus_id: "BUS-TG-101",
+    filename: "indian_bus_dashcam_road_survey.mp4",
+    duration_seconds: 35.6,
+    frame_count: 890,
+    fps: 25.0,
+    camera_channel: "front",
+    has_annotated: true,
+    events_count: 12,
+    demo_media_url: "/demo_media/bus_tg_101_front_survey.mp4",
+    annotated_demo_url: "/demo_media/bus_tg_101_annotated_survey.mp4",
+    corridor: "Hyderabad Urban Transit Spine (Route TG-01)",
+    description: "Trial road survey recording along Secunderabad - Gachibowli corridor.",
+  },
+  {
+    id: "VID-TG-201-SURVEY",
+    bus_id: "BUS-TG-201",
+    filename: "pothole_road_survey_front_camera.mp4",
+    duration_seconds: 30.0,
+    frame_count: 750,
+    fps: 25.0,
+    camera_channel: "front",
+    has_annotated: true,
+    events_count: 8,
+    demo_media_url: "/demo_media/bus_tg_201_front_survey.mp4",
+    annotated_demo_url: "/demo_media/bus_tg_201_annotated_survey.mp4",
+    corridor: "Northern Telangana Corridor (Route TG-02)",
+    description: "Pavement distress survey recording along Siddipet bypass.",
+  },
+];
+
 export default function CameraCenterTab({
   buses = [],
   events = [],
@@ -84,10 +117,18 @@ export default function CameraCenterTab({
   processingState = {},
   health,
 }) {
-  // Filter out any 1s dummy test fixtures
-  const genuineVideos = (videos || []).filter(
-    (v) => (v.duration_seconds || 0) >= 2.0
-  );
+  // Merge backend videos with genuine built-in demo recordings
+  const allVideos = React.useMemo(() => {
+    const list = [...BUILTIN_DEMO_RECORDINGS];
+    const seenIds = new Set(list.map((v) => v.id));
+    for (const v of (videos || [])) {
+      if (!seenIds.has(v.id) && (v.duration_seconds || 0) >= 2.0) {
+        list.push(v);
+        seenIds.add(v.id);
+      }
+    }
+    return list;
+  }, [videos]);
 
   const [selectedBusId, setSelectedBusId] = useState(
     buses && buses.length > 0 ? buses[0].id : "BUS-TG-101"
@@ -111,15 +152,11 @@ export default function CameraCenterTab({
       latest_gps: { latitude: 17.4399, longitude: 78.4983, speed_kmh: 38.4 },
     };
 
-  // Find videos assigned to selected bus, fallback to all genuine videos
-  const busVideos = genuineVideos.filter((v) => v.bus_id === selectedBusId);
-  const availableVideosForBus = busVideos.length > 0 ? busVideos : genuineVideos;
-
-  // Active video selection
+  // Requirement 9: Strict vehicle association - only assign videos to their genuine source vehicle
+  const busVideos = allVideos.filter((v) => v.bus_id === selectedBusId);
   const activeVideo =
-    genuineVideos.find((v) => v.id === selectedVideoId) ||
-    availableVideosForBus[0] ||
-    genuineVideos[0] ||
+    busVideos.find((v) => v.id === selectedVideoId) ||
+    busVideos[0] ||
     null;
 
   // Ensure default player mode selects annotated if available
@@ -759,9 +796,9 @@ export default function CameraCenterTab({
                     background: "#000",
                   }}
                   src={
-                    playerMode === "annotated" && activeVideo.has_annotated
-                      ? apiUrl(`/api/videos/${activeVideo.id}/annotated`)
-                      : apiUrl(`/api/videos/${activeVideo.id}/stream`)
+                    playerMode === "annotated"
+                      ? (activeVideo.annotated_demo_url || (activeVideo.has_annotated ? apiUrl(`/api/videos/${activeVideo.id}/annotated`) : activeVideo.demo_media_url || apiUrl(`/api/videos/${activeVideo.id}/stream`)))
+                      : (activeVideo.demo_media_url || apiUrl(`/api/videos/${activeVideo.id}/stream`))
                   }
                 >
                   Your browser does not support HTML5 video playback.
@@ -914,7 +951,15 @@ export default function CameraCenterTab({
                   {currentChannelInfo.name} ({currentChannelInfo.shortCode})
                 </div>
                 <div style={{ fontSize: "0.82rem", color: "#94a3b8", lineHeight: 1.5, marginBottom: "16px" }}>
-                  Channel is configured for vehicle telemetry on {selectedBus.id}. No real road video file is currently assigned to this auxiliary perspective.
+                  {activeChannel === "front" ? (
+                    <>
+                      Telemetry and GPS are active for <strong>{selectedBus.id}</strong>. No pre-recorded survey recording is registered for this unit. Genuine trial recordings are available on <strong>BUS-TG-101</strong> (35.6s) and <strong>BUS-TG-201</strong> (30.0s).
+                    </>
+                  ) : (
+                    <>
+                      Channel is configured for vehicle telemetry on {selectedBus.id}. No real road video file is currently assigned to this auxiliary perspective.
+                    </>
+                  )}
                 </div>
                 <div
                   style={{
@@ -928,15 +973,22 @@ export default function CameraCenterTab({
                     textAlign: "left",
                   }}
                 >
-                  <strong>Transparency Disclosure:</strong> UrbanSense AI never fabricates synthetic grey boxes or fake video feeds. Switch to the primary <strong>Front Dashcam</strong> to inspect genuine 720p HD road survey footage with RDD2022 road defect detections.
+                  <strong>Transparency Disclosure:</strong> UrbanSense AI never fabricates synthetic grey boxes or fake video feeds. Videos are assigned strictly to genuine source vehicles. Select <strong>BUS-TG-101</strong> or <strong>BUS-TG-201</strong> to inspect genuine 720p HD dashcam survey footage.
                 </div>
-                <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
+                <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
                   <button
                     className="btn-primary"
-                    onClick={() => setActiveChannel("front")}
+                    onClick={() => { setSelectedBusId("BUS-TG-101"); setActiveChannel("front"); }}
                     style={{ fontSize: "0.82rem", padding: "6px 14px" }}
                   >
-                    Switch to Front Dashcam Feed
+                    View BUS-TG-101 Survey (35.6s)
+                  </button>
+                  <button
+                    className="btn-primary"
+                    onClick={() => { setSelectedBusId("BUS-TG-201"); setActiveChannel("front"); }}
+                    style={{ fontSize: "0.82rem", padding: "6px 14px", background: "#059669", borderColor: "#059669" }}
+                  >
+                    View BUS-TG-201 Survey (30.0s)
                   </button>
                   {onNavigateTab && (
                     <button
@@ -944,7 +996,7 @@ export default function CameraCenterTab({
                       onClick={() => onNavigateTab("videos")}
                       style={{ fontSize: "0.82rem", padding: "6px 14px", color: "#ffffff", borderColor: "rgba(255,255,255,0.3)" }}
                     >
-                      <Upload size={13} style={{ marginRight: "4px" }} /> Upload Channel MP4
+                      <Upload size={13} style={{ marginRight: "4px" }} /> Upload Unit Video
                     </button>
                   )}
                 </div>
