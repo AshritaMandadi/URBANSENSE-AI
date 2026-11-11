@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: urbansense-backend
+    env: python
+    buildCommand: pip install -r requirements-prod.txt
+    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+    plan: standard # 2 GB RAM recommended for PyTorch YOLO inference
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: YOLO_CONFIG_DIR
+        value: /tmp
+      - key: ROAD_DAMAGE_MODEL_PATH
+        value: models/road_damage/best.pt
+      - key: CORS_ORIGINS
+        value: http://localhost:5173
+      - key: CORS_ORIGIN_REGEX
+        value: ^https://.*\.vercel\.app$
+    disk:
+      name: urbansense-storage
+      mountPath: /app/data
+      sizeGB: 5
+

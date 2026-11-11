@@ -1,0 +1,73 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+ENV/
+
+# SQLite databases & persistent data
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+data/*.db
+data/*.sqlite
+
+# AI models & training artifacts
+*.pt
+*.pth
+*.onnx
+runs/
+datasets/
+models/**/*.pt
+models/**/*.pth
+models/**/*.onnx
+
+# Large video assets & recordings (never commit large binary videos)
+data/videos/*
+!data/videos/.gitkeep
+data/sample/*
+!data/sample/.gitkeep
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+
+# Node.js & Vite build artifacts
+node_modules/
+dist/
+build/
+.vite/
+frontend/node_modules/
+frontend/dist/
+
+# Vercel deployment cache
+.vercel/
+
+# Environment variables & local secrets
+.env
+.env.*
+.env.local
+.env.*.local
+!.env.example
+!frontend/.env.example
+
+# Operating System & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs & temporary files
+*.log
+tmp/
+temp/

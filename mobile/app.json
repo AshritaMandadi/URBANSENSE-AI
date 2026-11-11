@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "UrbanSense AI",
+    "slug": "urbansense-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#1D4ED8"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1D4ED8"
+      }
+    }
+  }
+}
+
