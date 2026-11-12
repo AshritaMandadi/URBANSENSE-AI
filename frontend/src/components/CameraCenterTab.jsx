@@ -130,6 +130,9 @@ export default function CameraCenterTab({
     return list;
   }, [videos]);
 
+  // Genuine recordings alias (all built-in recordings + genuine backend recordings >= 2s)
+  const genuineVideos = allVideos;
+
   const [selectedBusId, setSelectedBusId] = useState(
     buses && buses.length > 0 ? buses[0].id : "BUS-TG-101"
   );
@@ -420,7 +423,7 @@ export default function CameraCenterTab({
               onClick={() => {
                 setSelectedBusId(bus.id);
                 // Also find if bus has a specific assigned video
-                const matched = genuineVideos.find((v) => v.bus_id === bus.id);
+                const matched = allVideos.find((v) => v.bus_id === bus.id);
                 if (matched) setSelectedVideoId(matched.id);
               }}
               style={{
@@ -631,7 +634,7 @@ export default function CameraCenterTab({
             </div>
 
             {/* Video Selector Dropdown for Front Camera */}
-            {activeChannel === "front" && genuineVideos.length > 0 && (
+            {activeChannel === "front" && busVideos.length > 0 && (
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)", fontWeight: 500 }}>
                   Active Recording:
@@ -649,7 +652,7 @@ export default function CameraCenterTab({
                     maxWidth: "230px",
                   }}
                 >
-                  {genuineVideos.map((v) => (
+                  {busVideos.map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.filename} ({v.duration_seconds ? `${v.duration_seconds.toFixed(0)}s` : "Video"})
                     </option>
@@ -771,7 +774,6 @@ export default function CameraCenterTab({
                   controls
                   playsInline
                   autoPlay
-                  defaultMuted
                   muted={isMuted}
                   loop
                   preload="auto"
